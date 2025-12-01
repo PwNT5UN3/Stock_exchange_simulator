@@ -61,10 +61,12 @@ class Trader:
 	def __init__(self, id: str, money: int, Broker: str):
 		self.id = id
 		self.money = money
-		self.positions: List[position] = []
+		self.positions: Dict[str, int] = {}
 		self.open_orders: Dict[str, Order] = {}
 		self.Broker = Broker
 		all_traders[id] = self
+		for ticker in full_book.keys():
+			self.positions[ticker] = 0
 
 	def submit_limit_order(self, ticker: str, qty: int, price: int, side: str):
 		order_id = generate_order_id(self.id)
@@ -85,12 +87,11 @@ class Trader:
 class market_maker(Trader):
 	def give_initial_positions(self):
 		for ticker in full_book.keys():
-			new_position = position(ticker=ticker, qty=full_book[ticker]['share_num'])
-			self.positions.append(new_position)
+			self.positions[ticker] = full_book[ticker]['share_num']
 	
 	def make_initial_offers(self):
-		for share in self.positions:
-			self.submit_limit_order(ticker=share.ticker, qty=share.qty, price=full_book[share.ticker]['initial_share_price'], side='sell')
+		for share in self.positions.keys():
+			self.submit_limit_order(ticker=share, qty=self.positions.get(share), price=full_book[share]['initial_share_price'], side='sell')
 
 
 all_traders = {}
@@ -103,7 +104,21 @@ def fill_buy(book: OrderBook, fill_book: OrderBook, order: Order, price: int):
 				for RestingOrder in RestingOrders:
 					if order['qty'] <= 0:
 						break
-					print(RestingOrder)
+					filled_shares = min(order['qty'], RestingOrder['qty'])
+					print(f"Can fill trade for :{filled_shares}")
+					all_traders[RestingOrder['trader_id']].positions[RestingOrder['ticker']] -= filled_shares
+					all_traders[order['trader_id']].positions[order['ticker']] += filled_shares
+					print(all_traders[RestingOrder['trader_id']].positions[RestingOrder['ticker']])
+					order['qty'] -= filled_shares
+					RestingOrder['qty'] -= filled_shares
+					trade_cost = filled_shares * key
+					print(trade_cost)
+					print(all_traders[RestingOrder['trader_id']].money)
+					print(all_traders[order['trader_id']].money)
+					all_traders[order['trader_id']].money -= trade_cost
+					all_traders[RestingOrder['trader_id']].money += trade_cost
+					print(all_traders[RestingOrder['trader_id']].money)
+					print(all_traders[order['trader_id']].money)
 			else:
 				break
 	if (order['qty'] > 0):
@@ -139,11 +154,14 @@ if __name__ == "__main__":
 	market_maker = market_maker("MM", 0, "MM")
 	market_maker.give_initial_positions()
 	market_maker.make_initial_offers()
+	test = Trader("GCM1", 500000, "GCM")
+	test.submit_limit_order('PBNJ', 10, 10100, 'buy')
 	for ticker in full_book.keys():
 		full_book[ticker]['bids'].print_book()
 	print("--------------------------------------------------------------")
 	for ticker in full_book.keys():
 		full_book[ticker]['offers'].print_book()
 	print(all_traders)
-	print(all_traders['MM'].print_orders())
-	
+	all_traders['MM'].print_orders()
+	all_traders['GCM1'].print_orders()
+	print(all_traders['GCM1'].positions)
